@@ -153,3 +153,5 @@ vite.config.ts.timestamp-*
 secrets.h
 node_modules/
 desktop.ini
+
+estrutura.json

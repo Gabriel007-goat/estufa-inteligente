@@ -1,122 +1,83 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useEffect, useState } from "react";
+import { ref, onValue, set } from "firebase/database";
+import { db } from "./firebase";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+const DEVICE = "dispositivos/esp32_01";
 
+function Card({ titulo, valor, unidade }) {
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <div className="card">
+      <span className="card-titulo">{titulo}</span>
+      <span className="card-valor">
+        {valor ?? "--"}
+        {valor != null && <small> {unidade}</small>}
+      </span>
+    </div>
+  );
 }
 
-export default App
+export default function App() {
+  const [online, setOnline] = useState(false);
+  const [sensores, setSensores] = useState({});
+  const [atuadores, setAtuadores] = useState({ bomba: false, cooler: false });
+
+  useEffect(() => {
+    const offConn = onValue(ref(db, ".info/connected"), (s) =>
+      setOnline(s.val() === true),
+    );
+    const offSens = onValue(ref(db, `${DEVICE}/sensores`), (s) =>
+      setSensores(s.val() || {}),
+    );
+    const offAtu = onValue(ref(db, `${DEVICE}/atuadores`), (s) =>
+      setAtuadores((prev) => ({ ...prev, ...(s.val() || {}) })),
+    );
+    return () => {
+      offConn();
+      offSens();
+      offAtu();
+    };
+  }, []);
+
+  const alternar = (nome) =>
+    set(ref(db, `${DEVICE}/atuadores/${nome}`), !atuadores[nome]);
+
+  const atualizado = sensores.ultima_atualizacao
+    ? new Date(sensores.ultima_atualizacao * 1000).toLocaleTimeString()
+    : "--";
+
+  return (
+    <div className="app">
+      <header>
+        <h1>Estufa Inteligente</h1>
+        <span className={`status ${online ? "on" : "off"}`}>
+          {online ? "Conectado ao Firebase" : "Desconectado"}
+        </span>
+      </header>
+
+      <section className="grid">
+        <Card titulo="Temperatura" valor={sensores.temperatura} unidade="°C" />
+        <Card titulo="Umidade do ar" valor={sensores.umidade} unidade="%" />
+        <Card
+          titulo="Umidade do solo"
+          valor={sensores.umidade_solo}
+          unidade="%"
+        />
+      </section>
+      <p className="atualizado">Última atualização: {atualizado}</p>
+
+      <section className="controles">
+        {["bomba", "cooler"].map((nome) => (
+          <label key={nome} className="controle">
+            <span>{nome === "bomba" ? "Bomba d'água" : "Cooler"}</span>
+            <input
+              type="checkbox"
+              checked={!!atuadores[nome]}
+              onChange={() => alternar(nome)}
+            />
+          </label>
+        ))}
+      </section>
+    </div>
+  );
+}
