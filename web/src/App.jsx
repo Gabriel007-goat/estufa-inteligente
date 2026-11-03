@@ -4,7 +4,7 @@ import { db } from "./firebase";
 import "./App.css";
 
 const DEVICE = "dispositivos/esp32_01";
-const PADRAO = { modo_automatico: true, temp_max: 30, umid_min: 40 };
+const PADRAO = { modo_automatico: true, umid_solo_min: 40 };
 const LIMITE_SEM_DADOS_S = 30;
 
 function formatar(valor, casas) {
@@ -26,8 +26,7 @@ export default function App() {
   const [atuadores, setAtuadores] = useState({});
   const [config, setConfig] = useState({});
   const [agora, setAgora] = useState(() => Date.now());
-  const [tempMax, setTempMax] = useState(String(PADRAO.temp_max));
-  const [umidMin, setUmidMin] = useState(String(PADRAO.umid_min));
+  const [umidMin, setUmidMin] = useState(String(PADRAO.umid_solo_min));
   const [aviso, setAviso] = useState(null);
   const editandoRef = useRef(false);
 
@@ -58,8 +57,7 @@ export default function App() {
           const c = s.val() || {};
           setConfig(c);
           if (!editandoRef.current) {
-            setTempMax(String(c.temp_max ?? PADRAO.temp_max));
-            setUmidMin(String(c.umid_min ?? PADRAO.umid_min));
+            setUmidMin(String(c.umid_solo_min ?? PADRAO.umid_solo_min));
           }
         },
         erroLeitura,
@@ -81,10 +79,11 @@ export default function App() {
 
   const modoAuto = config.modo_automatico ?? PADRAO.modo_automatico;
   const bomba = atuadores.bomba === true;
-  const cooler = atuadores.cooler === true;
 
+  // ultima_atualizacao deve vir em segundos; se vier em milissegundos, também funciona.
   const ts = Number(sensores.ultima_atualizacao);
-  const ultima = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000) : null;
+  const tsMs = ts > 1e12 ? ts : ts * 1000;
+  const ultima = Number.isFinite(ts) && ts > 0 ? new Date(tsMs) : null;
   const semDados =
     !ultima || (agora - ultima.getTime()) / 1000 > LIMITE_SEM_DADOS_S;
 
@@ -103,40 +102,37 @@ export default function App() {
 
   const alternarModo = () => gravar("config/modo_automatico", !modoAuto);
 
-  const alternarAtuador = (nome, atual) => {
+  const alternarBomba = () => {
     if (modoAuto) return;
-    gravar(`atuadores/${nome}`, !atual);
+    gravar("atuadores/bomba", !bomba);
   };
 
-  const salvarLimites = async (e) => {
+  const salvarLimite = async (e) => {
     e.preventDefault();
-    const t = Number(tempMax);
     const u = Number(umidMin);
-    if (
-      tempMax.trim() === "" ||
-      umidMin.trim() === "" ||
-      !Number.isFinite(t) ||
-      !Number.isFinite(u)
-    ) {
+    if (umidMin.trim() === "" || !Number.isFinite(u)) {
       setAviso({
         tipo: "erro",
-        texto: "Informe valores numéricos nos dois limites.",
+        texto: "Informe um valor numérico para o limite.",
       });
       return;
     }
     if (u < 0 || u > 100) {
-      setAviso({ tipo: "erro", texto: "A umidade deve estar entre 0 e 100%." });
+      setAviso({
+        tipo: "erro",
+        texto: "A umidade do solo deve estar entre 0 e 100%.",
+      });
       return;
     }
     try {
-      await update(ref(db, `${DEVICE}/config`), { temp_max: t, umid_min: u });
+      await update(ref(db, `${DEVICE}/config`), { umid_solo_min: u });
       editandoRef.current = false;
-      setAviso({ tipo: "ok", texto: "Limites salvos." });
+      setAviso({ tipo: "ok", texto: "Limite salvo." });
     } catch {
       setAviso({
         tipo: "erro",
         texto:
-          "Não foi possível salvar os limites. Verifique a conexão e as regras do banco.",
+          "Não foi possível salvar o limite. Verifique a conexão e as regras do banco.",
       });
     }
   };
@@ -163,7 +159,11 @@ export default function App() {
           </div>
           <div className="leitura">
             <span className="valor">{formatar(sensores.umidade, 0)}</span>
-            <span className="legenda">umidade (%)</span>
+            <span className="legenda">umidade do ar (%)</span>
+          </div>
+          <div className="leitura">
+            <span className="valor">{formatar(sensores.umidade_solo, 0)}</span>
+            <span className="legenda">umidade do solo (%)</span>
           </div>
         </div>
         <p className={`ultima ${semDados ? "alerta" : ""}`}>
@@ -179,8 +179,8 @@ export default function App() {
         <div className="modo">
           <p className="texto-modo">
             {modoAuto
-              ? "Automático: o ESP32 decide sozinho, seguindo os limites abaixo. Desligue para assumir o controle manual pelos botões."
-              : "Manual: você controla a bomba e o cooler pelos botões abaixo. Ligue para voltar ao modo automático."}
+              ? "Automático: o ESP32 liga a bomba sozinho quando o solo fica abaixo do limite abaixo. Desligue para assumir o controle manual pelo botão."
+              : "Manual: você controla a bomba pelo botão abaixo. Ligue para voltar ao modo automático."}
           </p>
           <button
             type="button"
@@ -196,7 +196,7 @@ export default function App() {
       </section>
 
       <section className="cartao">
-        <h2 className="rotulo">Atuadores</h2>
+        <h2 className="rotulo">Atuador</h2>
         <div className="atuadores">
           <div className="atuador">
             <span className="nome">Bomba d'água</span>
@@ -210,49 +210,19 @@ export default function App() {
                   ? "Desligue o modo automático para controlar manualmente"
                   : undefined
               }
-              onClick={() => alternarAtuador("bomba", bomba)}
+              onClick={alternarBomba}
             >
               {bomba ? "LIGADA" : "DESLIGADA"}
-            </button>
-          </div>
-          <div className="atuador">
-            <span className="nome">Cooler</span>
-            <button
-              type="button"
-              className={`botao-atuador ${cooler ? "on" : ""}`}
-              aria-pressed={cooler}
-              disabled={modoAuto}
-              title={
-                modoAuto
-                  ? "Desligue o modo automático para controlar manualmente"
-                  : undefined
-              }
-              onClick={() => alternarAtuador("cooler", cooler)}
-            >
-              {cooler ? "LIGADO" : "DESLIGADO"}
             </button>
           </div>
         </div>
       </section>
 
       <section className="cartao">
-        <h2 className="rotulo">Limites do modo automático</h2>
-        <form className="limites" onSubmit={salvarLimites}>
+        <h2 className="rotulo">Limite do modo automático</h2>
+        <form className="limites" onSubmit={salvarLimite}>
           <label className="campo">
-            <span>Cooler liga quando temperatura maior que (°C)</span>
-            <input
-              type="number"
-              step="any"
-              inputMode="decimal"
-              value={tempMax}
-              onChange={(e) => {
-                editandoRef.current = true;
-                setTempMax(e.target.value);
-              }}
-            />
-          </label>
-          <label className="campo">
-            <span>Bomba liga quando umidade menor que (%)</span>
+            <span>Bomba liga quando umidade do solo menor que (%)</span>
             <input
               type="number"
               step="any"
@@ -265,7 +235,7 @@ export default function App() {
             />
           </label>
           <button type="submit" className="botao-salvar">
-            Salvar limites
+            Salvar limite
           </button>
         </form>
         {aviso && (

@@ -85,9 +85,10 @@ body {
   color: var(--rotulo);
 }
 
+/* Leituras */
 .leituras {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   background: var(--interno);
   border: 1px solid var(--borda);
   border-radius: 6px;
@@ -127,6 +128,7 @@ body {
   color: var(--ambar);
 }
 
+/* Modo de operação */
 .modo {
   display: flex;
   align-items: center;
@@ -182,9 +184,10 @@ body {
   outline-offset: 2px;
 }
 
+/* Atuadores */
 .atuadores {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 16px;
 }
 
@@ -232,9 +235,10 @@ body {
   opacity: 0.8;
 }
 
+/* Limites */
 .limites {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr auto;
   align-items: end;
   gap: 16px;
 }
@@ -311,6 +315,15 @@ body {
 
   .modo {
     align-items: flex-start;
+  }
+
+  .leituras {
+    grid-template-columns: 1fr;
+  }
+
+  .leitura + .leitura {
+    border-left: 0;
+    border-top: 1px solid var(--borda);
   }
 
   .leitura {
